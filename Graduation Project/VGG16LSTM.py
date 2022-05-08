@@ -1,6 +1,7 @@
 import torch.nn as nn
 import torch
 import torch.nn.functional as F
+import numpy as np
 from torchsummary import summary
 
 class VGG16LSTM(nn.Module):
@@ -57,28 +58,46 @@ class VGG16LSTM(nn.Module):
         self.fc1 = nn.Linear(256, 128)
         self.fc2 = nn.Linear(128, num_classes)
 
-    def forward(self, x_3d):
+    # batch_length: 每一组batch里面真实帧数
+    def forward(self, x_3d, batch_length):
         cnn_output_list = list()
-        # print(x_3d.shape) [4, 5, 3, 160, 160]
+        # print(x_3d.shape) [8, 5, 3, 160, 160]
+        batch_length_list = batch_length.tolist()
+        batch_size = len(batch_length_list)
+
         for t in range(x_3d.shape[1]):
-            # print((x_3d[:, t, :, :, :]).shape)   [4, 3, 160, 160]
+            # print((x_3d[:, t, :, :, :]).shape)   [8, 3, 160, 160]
             pool1 = self.block1(x_3d[:, t, :, :, :])
             pool2 = self.block2(pool1)
             pool3 = self.block3(pool2)
             pool4 = self.block4(pool3)
             pool5 = self.block5(pool4)
-            # print(pool5.shape)    [4, 512, 5, 5] 4是batch_size
+            # print(pool5.shape)    [8, 512, 5, 5] 8是batch_size
             cnn_output = pool5.reshape(pool5.shape[0], -1)
-            # print(pool5.shape)    [4, 512 * 5 * 5]
+            # print(pool5.shape)    [8, 512 * 5 * 5]
             cnn_output_list.append(cnn_output)
         x = torch.stack(tuple(cnn_output_list), dim=1)
-        # print(x.shape)    [4, 5, 12800]
+        # print(x.shape)    [8, 5, 12800]
         out, (hn, cn) = self.lstm(x)
         # x = hn
-        x = out[:, -1, :]
-        # x = F.relu(x) # shape: [4, 256]
+
+        # x = out[:, -1, :]
+        # print(out.dtype)
+        temp = [x-1 for x in batch_length_list]
+        batch_length_list = temp
+        # print(batch_length_list)
+        x = []
+        for i in range(batch_size):
+            temp = (out[i][batch_length_list[i]]).tolist()
+            x.append(temp)
+        # x = torch.from_numpy(np.array(x))
+        x = torch.tensor(x, dtype=torch.float32)
+        x = x.cuda()
+        # print(x.dtype)
+
+        # x shape: [8, 256]
         x = self.fc1(x)
-        x = F.relu(x) # shape: [4, 128]
+        x = F.relu(x) # shape: [8, 128]
         x = self.fc2(x)
         x = torch.softmax(x, dim=1)
         return x

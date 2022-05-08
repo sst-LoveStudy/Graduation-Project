@@ -16,7 +16,7 @@ def read_split_data(root:str, val_rate:float=0.2):
 
     # 遍历文件夹，一个文件夹对应一个类别
     scene_class = [cla for cla in os.listdir(root) if os.path.isdir(os.path.join(root, cla))]
-    scene_class = ['General Entertainment', 'Art Museum']
+    # scene_class = ['General Entertainment', 'Art Museum']
     # 排序保证顺序一致
     scene_class.sort()
     # 生成类别名以及对应的数字索引0-21，存储到json格式文件中

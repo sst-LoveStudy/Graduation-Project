@@ -43,11 +43,11 @@ class MyDataSet(Dataset):
                 for i in range(video.frames_num):
                     video.frames_list[i] = self.transform(video.frames_list[i])
 
-        return video, label
+        return video, label, video.frames_num
 
     @staticmethod
     def collate_fn(batch):
-        videos, labels = tuple(zip(*batch))
+        videos, labels, length = tuple(zip(*batch))
         # 原教学视频中图片是（3，h，w）
         # 使用images=torch.stack(images, dim=0)是变成了(batch_size, 3, h, w)
         temp_videos_tensor = []
@@ -59,8 +59,10 @@ class MyDataSet(Dataset):
 
         videos = pad_sequence(videos, batch_first=True) # 输入变成了(batch_size, t, 3, h, w), t指的是frames_num
         # videos = torch.stack(videos, dim=0)
+
         labels = torch.as_tensor(labels)
-        return videos, labels
+        length = torch.as_tensor(length)
+        return videos, labels, length
 
 def get_batch(videos_path, videos_label, batch_size, str):
     # 开始装载数据
@@ -101,7 +103,8 @@ def get_batch(videos_path, videos_label, batch_size, str):
         drop_last=True,
         num_workers=nw,
         collate_fn=dataset.collate_fn
-    ) # 装载数据完成
+    )
+    #  装载数据完成
     #  shuffle是指每个epoch都随机打乱数据排列再分batch，
     #  这里一定要设置成false，否则之前的排序会直接被打乱，
     #  drop_last是指不利用最后一个不完整的batch（数据大小不能被batch_size整除）
