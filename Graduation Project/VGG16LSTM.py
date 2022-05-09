@@ -123,7 +123,7 @@ class VGG16LSTM(nn.Module):
 
 if __name__ == "__main__":
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # vgg_model=VGG16().to(device)
+    # vgg_model=CNN().to(device)
     # summary(vgg_model, (3, 160, 160)) #打印网络结构
 
     vgg16lstm = VGG16LSTM().to(device)

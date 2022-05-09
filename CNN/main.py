@@ -1,33 +1,44 @@
-import os
+from Net import VGG16, ResNet34
 import torch
-import torch.nn as nn
+import torch.utils.data as data
 from torchvision import transforms, datasets
-from vine_datasaet.utils import read_split_data
-from vine_datasaet.my_dataset import get_batch
-from sklearn.metrics import accuracy_score
+from torch import nn
 import time
-from torch.utils.tensorboard import SummaryWriter
+from sklearn.metrics import accuracy_score
 import matplotlib.pyplot as plt
-from Net import CNN_LSTM, CNN_LSTM_Attention
 
+EPOCH = 10
+NUM_CLASSES = 22
+LR = 0.00001
+BATCH_SIZE = 8
+NUM_WORKER = 8
 
 start = time.time()
 
-# 初始化参数
-# root = 'D:\\workspace_py\\classicCNN\\vine_keyframes_test_3'
-root = '/mntc/sst/vine_keyframes'
-NUM_CLASSES = 22
-EPOCH = 3
-LR = 0.00001
-BATCH_SIZE = 8
+data_transform = transforms.Compose([
+    transforms.Resize((160, 160)),
+    # transforms.RandomHorizontalFlip(), # 随机水平翻转
+    transforms.ToTensor() #将图片转换为Tensor,归一化至[0,1]
+])
 
-train_videos_path, train_videos_label, val_videos_path, val_videos_label = read_split_data(root)
-num_train_data, num_val_data = len(train_videos_label), len(val_videos_label)
+root = "/mntc/sst/vine_keyframes_img"
 
-train_loader = get_batch(train_videos_path, train_videos_label, BATCH_SIZE, 'train')
-val_loader = get_batch(val_videos_path, val_videos_label, BATCH_SIZE, 'val')
+full_dataset = datasets.ImageFolder(root, transform=data_transform)
+total_count = len(full_dataset)
+num_train_data = int(0.8 * total_count)
+num_val_data = total_count - num_train_data
+train_dataset, val_dataset = torch.utils.data.random_split(full_dataset, [num_train_data, num_val_data])
 
-writer = SummaryWriter()
+train_loader = torch.utils.data.DataLoader(
+    train_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKER
+)
+val_loader = torch.utils.data.DataLoader(
+    val_dataset, batch_size=BATCH_SIZE, shuffle=True, num_workers=NUM_WORKER
+)
+dataloaders = {
+    "train": train_loader,
+    "val": val_loader
+}
 
 def my_plot(in_train, in_val, title:str):
     plt.figure(figsize=(10, 10))
@@ -48,7 +59,7 @@ def train(model, train_loader, epoch=EPOCH, batch_size=BATCH_SIZE, lr=LR):
     net = VGG16LSTM(num_classes=NUM_CLASSES)
     net = net.to(device)
     '''
-    print('Start ' + type(model).__name__ + '_' + type(model.cnn).__name__ + 'model training...')
+    print('Start {} model training...'.format(type(model).__name__))
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     loss_func = nn.CrossEntropyLoss()
 
@@ -62,18 +73,11 @@ def train(model, train_loader, epoch=EPOCH, batch_size=BATCH_SIZE, lr=LR):
         model.train()
         loss = 0.0
         accuracy = 0.0
-        for batch_idx, (train_data, train_label, batch_length) in enumerate(train_loader):
+        for batch_idx, (train_data, train_label) in enumerate(train_loader):
             train_data = train_data.to(device)
             train_label = train_label.to(device)
-            # print(batch_length)
-            # print(type(batch_length))
-            if type(model).__name__ == 'CNN_LSTM':
-                batch_length = batch_length.to(device)
-                train_prediction = model(train_data, batch_length)
-            elif type(model).__name__ == 'CNN_LSTM_Attention':
-                train_prediction = model(train_data)
-            # print(train_prediction)
-            # print(train_data.shape, train_prediction.shape, train_label.shape)
+            train_prediction = model(train_data)
+
             _, predict = torch.max(train_prediction, dim=1)
             # predict = train_prediction.detach().to("cpu").numpy()
             predict = predict.to("cpu")
@@ -95,7 +99,7 @@ def train(model, train_loader, epoch=EPOCH, batch_size=BATCH_SIZE, lr=LR):
         acc_train_list.append(accuracy)
 
         # 保存训练好的数据参数
-        torch.save(model.state_dict(), type(model).__name__ + '_' + type(model.cnn).__name__ + '.pt')
+        torch.save(model.state_dict(), type(model).__name__ + '.pt')
         # 验证集验证
         loss_val, accuracy_val = test(model, val_loader)
         loss_val_list.append(loss_val)
@@ -105,9 +109,8 @@ def train(model, train_loader, epoch=EPOCH, batch_size=BATCH_SIZE, lr=LR):
         print(' | 运行时间为：%.2f' % (epoch_time - start))
 
     # 绘图
-    my_plot(loss_train_list, loss_val_list, 'Loss: ' + type(model).__name__ + '_' + type(model.cnn).__name__)
-    my_plot(acc_train_list, acc_val_list, 'Accuracy: ' + type(model).__name__ + '_' + type(model.cnn).__name__)
-
+    my_plot(loss_train_list, loss_val_list, 'Loss: ' + type(model).__name__)
+    my_plot(acc_train_list, acc_val_list, 'Accuracy: ' + type(model).__name__)
 
 
 def test(model, val_loader, batch_size=BATCH_SIZE):
@@ -122,17 +125,13 @@ def test(model, val_loader, batch_size=BATCH_SIZE):
     net = net.to(device)
     '''
     model.eval()
-    loss_func = nn.CrossEntropyLoss()
     loss = 0.0
+    loss_func = nn.CrossEntropyLoss()
     accuracy = 0.0
-    for batch_idx, (val_data, val_label, batch_length) in enumerate(val_loader):
+    for batch_idx, (val_data, val_label) in enumerate(val_loader):
         val_data = val_data.to(device)
         val_label = val_label.to(device)
-        if type(model).__name__ == 'CNN_LSTM':
-            batch_length = batch_length.to(device)
-            val_prediction = model(val_data, batch_length)
-        elif type(model).__name__ == 'CNN_LSTM_Attention':
-            val_prediction = model(val_data)
+        val_prediction = model(val_data)
 
         _, predict = torch.max(val_prediction, dim=1)
         # predict = train_prediction.detach().to("cpu").numpy()
@@ -152,14 +151,16 @@ def test(model, val_loader, batch_size=BATCH_SIZE):
 
 if __name__ == '__main__':
     # 使用GPU
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print('using {} device'.format(device))
     # 开始训练
-    net = CNN_LSTM(num_classes=NUM_CLASSES, model_name='VGG16')
+    # VGG16
+    net = VGG16(num_classes=NUM_CLASSES)
     net = net.to(device)
     train(net, train_loader)
 
-    net = CNN_LSTM_Attention(num_classes=NUM_CLASSES, model_name='ResNet34')
+    # ResNet34
+    net = ResNet34(num_classes=NUM_CLASSES)
     net = net.to(device)
     train(net, train_loader)
 
